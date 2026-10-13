@@ -21,6 +21,11 @@ export function paceZona(z: keyof typeof ZONAS_PACE | string): string {
   return `${mmss(segKm(hi))}–${mmss(segKm(lo))}/km`;
 }
 
+// Ritmo leve (Z1–Z2): qualquer pace a partir do limite rápido da Z2
+export function paceLeve(): string {
+  return `${mmss(segKm(ZONAS_PACE.Z2[1]))}/km ou mais lento`;
+}
+
 export const PROVA = { nome: "30 km Hoka", data: "2026-11-08", incerta: true };
 
 export type SessaoPlano = { data: string; tipo: string; distancia_km: number; pace_alvo: string; descricao: string };
@@ -40,7 +45,7 @@ export function gerarSemana(segunda: string, retorno: boolean, nivel: number): S
     if (kTer)
       out.push({ data: ter, tipo: "rodagem", distancia_km: kTer, pace_alvo: z2, descricao: "Rodagem leve de manhã, opcional. Pare se o joelho doer." });
     out.push({
-      data: sex, tipo: "rodagem", distancia_km: kSex, pace_alvo: paceZona("Z1") + " a " + z2,
+      data: sex, tipo: "rodagem", distancia_km: kSex, pace_alvo: paceLeve(),
       descricao: nivel <= 1 ? "Alternar 4 min correndo e 1 min andando. Terreno plano." : "Rodagem leve e contínua, terreno plano.",
     });
     out.push({ data: sab, tipo: "longao", distancia_km: kSab, pace_alvo: z2, descricao: "Longão leve. Conversa possível o tempo todo." });

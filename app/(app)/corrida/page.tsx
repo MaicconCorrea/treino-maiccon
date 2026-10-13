@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addDias, diasEntre, fmtCurta, fmtDataCompleta, fmtDuracao, fmtPace, hojeISO, inicioSemana } from "@/lib/datas";
-import { PROVA, TIPO_CORRIDA, ZONAS_FC, ZONAS_PACE, gerarSemana, paceZona } from "@/lib/corrida";
+import { PROVA, TIPO_CORRIDA, ZONAS_FC, ZONAS_PACE, gerarSemana, paceLeve, paceZona } from "@/lib/corrida";
 
 type Plano = { id: string; data: string; tipo: string; distancia_km: number; pace_alvo: string; descricao: string; status: string };
 type Corrida = { id: string; data: string; distancia_m: number | null; duracao_s: number | null; fc_media: number | null; nome: string | null; fonte: string };
@@ -71,7 +71,7 @@ export default function Corrida() {
     if (!proxima) return;
     await createClient().from("run_plan").update({
       distancia_km: Math.max(2, Math.round(proxima.distancia_km * 0.7 * 10) / 10),
-      pace_alvo: paceZona("Z1") + " a " + paceZona("Z2"),
+      pace_alvo: paceLeve(),
       descricao: "Reduzida por dor: só leve, terreno plano. Pare se doer. " + proxima.descricao,
       status: "reduzido",
     }).eq("id", proxima.id);
