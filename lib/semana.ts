@@ -1,53 +1,35 @@
-// Semana atual (especificação, seção 4). Índice = Date.getDay() (0 = domingo).
-export type Atividade = { tipo: "musculacao" | "pilates" | "muaythai" | "corrida" | "descanso"; nome: string; obs?: string };
+// Semana padrão (especificação, seção 4) e catálogo de atividades para ajustar um dia.
+import { diaSemana } from "./datas";
 
-export const SEMANA: { curto: string; longo: string; atividades: Atividade[] }[] = [
-  { curto: "Dom", longo: "Domingo", atividades: [{ tipo: "descanso", nome: "Descanso" }] },
-  {
-    curto: "Seg",
-    longo: "Segunda",
-    atividades: [
-      { tipo: "musculacao", nome: "Musculação A", obs: "Perna mais pesada da semana" },
-      { tipo: "pilates", nome: "Pilates", obs: "Depois da musculação, ou 2h antes" },
-    ],
-  },
-  {
-    curto: "Ter",
-    longo: "Terça",
-    atividades: [
-      { tipo: "muaythai", nome: "Muay thai" },
-      { tipo: "corrida", nome: "Corrida leve", obs: "Opcional, de manhã" },
-    ],
-  },
-  {
-    curto: "Qua",
-    longo: "Quarta",
-    atividades: [
-      { tipo: "musculacao", nome: "Musculação B" },
-      { tipo: "pilates", nome: "Pilates", obs: "Depois da musculação, ou 2h antes" },
-    ],
-  },
-  { curto: "Qui", longo: "Quinta", atividades: [{ tipo: "muaythai", nome: "Muay thai" }] },
-  {
-    curto: "Sex",
-    longo: "Sexta",
-    atividades: [
-      { tipo: "musculacao", nome: "Musculação C", obs: "Abdômen só hoje" },
-      { tipo: "corrida", nome: "Corrida moderada", obs: "Depois da musculação, ou 6h de intervalo" },
-    ],
-  },
-  { curto: "Sáb", longo: "Sábado", atividades: [{ tipo: "corrida", nome: "Corrida longa", obs: "Ritmo leve" }] },
+export type TipoAtividade = "musculacao" | "pilates" | "muaythai" | "corrida" | "descanso";
+export type Atividade = { id: string; tipo: TipoAtividade; nome: string; obs?: string };
+
+export const CATALOGO: Record<string, Atividade> = {
+  musculacao: { id: "musculacao", tipo: "musculacao", nome: "Musculação", obs: "Próximo treino da fila" },
+  pilates: { id: "pilates", tipo: "pilates", nome: "Pilates", obs: "Depois da musculação, ou 2h antes" },
+  muaythai: { id: "muaythai", tipo: "muaythai", nome: "Muay thai" },
+  corrida_leve: { id: "corrida_leve", tipo: "corrida", nome: "Corrida leve", obs: "Opcional, de manhã" },
+  corrida_moderada: { id: "corrida_moderada", tipo: "corrida", nome: "Corrida moderada", obs: "Depois da musculação, ou 6h de intervalo" },
+  corrida_longa: { id: "corrida_longa", tipo: "corrida", nome: "Corrida longa", obs: "Ritmo leve" },
+  descanso: { id: "descanso", tipo: "descanso", nome: "Descanso" },
+};
+
+// Índice = getDay() (0 = domingo)
+export const PADRAO: string[][] = [
+  ["descanso"],
+  ["musculacao", "pilates"],
+  ["muaythai", "corrida_leve"],
+  ["musculacao", "pilates"],
+  ["muaythai"],
+  ["musculacao", "corrida_moderada"],
+  ["corrida_longa"],
 ];
 
-// Dia da semana no fuso de São Paulo (o servidor da Vercel roda em UTC)
-export function hojeSP(): { dow: number; dataLonga: string } {
-  const now = new Date();
-  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" }).format(now);
-  const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd);
-  const dataLonga = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "numeric",
-    month: "long",
-  }).format(now);
-  return { dow, dataLonga };
+export const NOMES_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+export const CURTO_DIA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+export function atividadesDoDia(iso: string, ajuste?: string[] | null): Atividade[] {
+  const ids = ajuste && ajuste.length ? ajuste : PADRAO[diaSemana(iso)];
+  return ids.map((id) => CATALOGO[id]).filter(Boolean);
 }
+

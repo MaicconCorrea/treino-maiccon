@@ -1,0 +1,21 @@
+import Link from "next/link";
+import { signOut } from "../../actions";
+
+export default function Mais() {
+  return (
+    <main className="wrap">
+      <header>
+        <h1>Mais</h1>
+      </header>
+      <section className="card links">
+        <Link href="/corpo">Corpo <span>Bioimpedância e gráficos</span></Link>
+        <Link href="/protocolo">Protocolo <span>Suplementos e receitas</span></Link>
+        <Link href="/atividades">Atividades <span>Muay thai, pilates e histórico</span></Link>
+        <Link href="/strava">Strava <span>Conexão e importação</span></Link>
+      </section>
+      <form action={signOut}>
+        <button className="btn ghost" type="submit">Sair</button>
+      </form>
+    </main>
+  );
+}

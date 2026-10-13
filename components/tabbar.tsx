@@ -1,31 +1,30 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-// Abas do app. As que ainda não existem aparecem apagadas até a fase correspondente.
 const TABS = [
-  { href: "/", label: "Hoje", ic: "H", pronto: true },
-  { href: "/musculacao", label: "Treino", ic: "M", pronto: false },
-  { href: "/corrida", label: "Corrida", ic: "C", pronto: false },
-  { href: "/nutricao", label: "Nutrição", ic: "N", pronto: false },
-  { href: "/corpo", label: "Corpo", ic: "B", pronto: false },
+  { href: "/", label: "Hoje", ic: "H" },
+  { href: "/musculacao", label: "Treino", ic: "M" },
+  { href: "/corrida", label: "Corrida", ic: "C" },
+  { href: "/nutricao", label: "Nutrição", ic: "N" },
+  { href: "/mais", label: "Mais", ic: "+" },
 ];
+const MAIS = ["/mais", "/corpo", "/protocolo", "/atividades", "/strava", "/perfil"];
 
-export default function Tabbar({ atual }: { atual: string }) {
+export default function Tabbar() {
+  const path = usePathname();
+  const ativo = (href: string) =>
+    href === "/" ? path === "/" : href === "/mais" ? MAIS.some((p) => path.startsWith(p)) : path.startsWith(href);
   return (
     <nav className="tabbar" aria-label="Seções">
       <ul>
         {TABS.map((t) => (
           <li key={t.href}>
-            {t.pronto ? (
-              <Link href={t.href} aria-current={atual === t.href ? "page" : undefined}>
-                <i>{t.ic}</i>
-                {t.label}
-              </Link>
-            ) : (
-              <span title="Em breve">
-                <i>{t.ic}</i>
-                {t.label}
-              </span>
-            )}
+            <Link href={t.href} aria-current={ativo(t.href) ? "page" : undefined}>
+              <i>{t.ic}</i>
+              {t.label}
+            </Link>
           </li>
         ))}
       </ul>

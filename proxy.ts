@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas abertas sem login
-const PUBLIC = ["/login", "/auth/"];
+const PUBLIC = ["/login", "/auth/", "/api/strava/webhook"];
 
 // E-mails autorizados (vírgula). Vazio = qualquer conta do Supabase entra.
 const ALLOWED = (process.env.ALLOWED_EMAILS || "")
@@ -47,6 +47,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user && !isPublic) {
+    if (path.startsWith("/api/")) return NextResponse.json({ erro: "login" }, { status: 401 });
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
