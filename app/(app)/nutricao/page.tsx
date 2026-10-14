@@ -6,9 +6,17 @@ import { addDias, diasDaSemana, fmtCurta, fmtLonga, hojeISO } from "@/lib/datas"
 import { CURTO_DIA } from "@/lib/semana";
 import { CORTE_MAX, REFEICOES, calcularSemana, refeicaoPorHora, type Meta } from "@/lib/nutricao";
 import { comprimirImagem, enviar, type Midia } from "@/lib/arquivo";
+import { buscar, carregarTaco, porGramas, type Taco } from "@/lib/taco";
 
 type Registro = { id: string; data_hora: string; refeicao: string | null; descricao: string; quantidade_g: number | null; kcal: number | null; prot_g: number | null; carb_g: number | null; gord_g: number | null; origem: string; confianca: string | null };
-type ItemEd = { descricao: string; quantidade_g: string; kcal: string; prot_g: string; carb_g: string; gord_g: string };
+// base: valores por 100 g (TACO). Quando existe, mudar os gramas recalcula o resto.
+type Base = { kcal: number; prot: number; carb: number; gord: number };
+type ItemEd = { descricao: string; quantidade_g: string; kcal: string; prot_g: string; carb_g: string; gord_g: string; base?: Base };
+type Recente = { descricao: string; quantidade_g: number; base: Base };
+const deBase = (descricao: string, g: number, base: Base): ItemEd => {
+  const v = porGramas(base, g);
+  return { descricao, quantidade_g: String(g), kcal: String(v.kcal), prot_g: String(v.prot), carb_g: String(v.carb), gord_g: String(v.gord), base };
+};
 const vazio = (): ItemEd => ({ descricao: "", quantidade_g: "", kcal: "", prot_g: "", carb_g: "", gord_g: "" });
 const n = (s: string) => parseFloat(String(s).replace(",", ".")) || 0;
 const r0 = (x: number) => Math.round(x);
@@ -103,7 +111,7 @@ export default function Nutricao() {
                   <b>{r.descricao}</b>
                   <div className="small muted">
                     {r.quantidade_g ? `${r0(Number(r.quantidade_g))} g · ` : ""}P {r0(Number(r.prot_g || 0))} · C {r0(Number(r.carb_g || 0))} · G {r0(Number(r.gord_g || 0))}
-                    {r.origem !== "manual" && ` · estimado por foto${r.confianca ? ` (${r.confianca})` : ""}`}
+                    {r.origem === "taco" ? " · TACO" : r.origem !== "manual" && ` · estimado por foto${r.confianca ? ` (${r.confianca})` : ""}`}
                   </div>
                 </div>
                 <div className="r"><b>{r0(Number(r.kcal || 0))}</b> kcal <button className="x" aria-label="Apagar" onClick={() => apagar(r.id)}>×</button></div>
@@ -149,7 +157,10 @@ export default function Nutricao() {
 }
 
 function NovoRegistro({ dia, onSaved }: { dia: string; onSaved: () => void }) {
-  const [modo, setModo] = useState<"tabela" | "prato" | "manual">("tabela");
+  const [modo, setModo] = useState<"busca" | "tabela" | "prato" | "manual">("busca");
+  const [taco, setTaco] = useState<Taco[]>([]);
+  const [termo, setTermo] = useState("");
+  const [recentes, setRecentes] = useState<Recente[]>([]);
   const [foto, setFoto] = useState<{ midia: Midia; blob: Blob; url: string } | null>(null);
   const [qtd, setQtd] = useState("");
   const [unid, setUnid] = useState("g");
@@ -162,8 +173,29 @@ function NovoRegistro({ dia, onSaved }: { dia: string; onSaved: () => void }) {
   const [erro, setErro] = useState<string | null>(null);
 
   function limpar() {
-    setFoto(null); setQtd(""); setDesc(""); setTextoItens(""); setItens(null); setInfo(null); setErro(null);
+    setFoto(null); setQtd(""); setDesc(""); setTextoItens(""); setItens(null); setInfo(null); setErro(null); setTermo("");
   }
+
+  // TACO carregada uma vez; recentes = últimos alimentos registrados pela busca (com o peso usado)
+  useEffect(() => {
+    carregarTaco().then(setTaco);
+    createClient().from("foods_log").select("descricao, quantidade_g, kcal, prot_g, carb_g, gord_g")
+      .eq("origem", "taco").order("data_hora", { ascending: false }).limit(80)
+      .then(({ data }) => {
+        const vistos = new Set<string>(), out: Recente[] = [];
+        for (const r of data || []) {
+          const g = Number(r.quantidade_g) || 0;
+          if (!g || vistos.has(r.descricao)) continue;
+          vistos.add(r.descricao);
+          const k = 100 / g;
+          out.push({ descricao: r.descricao, quantidade_g: g, base: { kcal: Number(r.kcal) * k, prot: Number(r.prot_g) * k, carb: Number(r.carb_g) * k, gord: Number(r.gord_g) * k } });
+          if (out.length >= 8) break;
+        }
+        setRecentes(out);
+      });
+  }, []);
+  const resultados = useMemo(() => buscar(taco, termo), [taco, termo]);
+  const adicionar = (it: ItemEd) => { setItens((l) => [...(l || []), it]); setTermo(""); };
 
   async function escolherFoto(f: File | undefined) {
     if (!f) return;
@@ -201,23 +233,34 @@ function NovoRegistro({ dia, onSaved }: { dia: string; onSaved: () => void }) {
     const path = foto ? await enviar("fotos", foto.blob, "jpg") : null;
     // Horário: agora, se for hoje; meio-dia, se for outro dia
     const quando = dia === hojeISO() ? new Date().toISOString() : new Date(dia + "T15:00:00Z").toISOString();
-    const origem = modo === "tabela" ? "foto_tabela" : modo === "prato" && foto ? "foto_prato" : "manual";
+    const origem = modo === "busca" ? "taco" : modo === "tabela" ? "foto_tabela" : modo === "prato" && foto ? "foto_prato" : "manual";
     const { error } = await createClient().from("foods_log").insert(lista.map((i) => ({
       data_hora: quando, refeicao, descricao: i.descricao, quantidade_g: n(i.quantidade_g) || null,
       kcal: n(i.kcal), prot_g: n(i.prot_g), carb_g: n(i.carb_g), gord_g: n(i.gord_g),
-      origem, foto_path: path, confianca: modo === "manual" ? null : info?.confianca ?? null,
+      origem, foto_path: path, confianca: modo === "manual" || modo === "busca" ? null : info?.confianca ?? null,
     })));
     setBusy(false);
     if (error) { setErro("Não consegui salvar: " + error.message); return; }
+    if (modo === "busca") {
+      const novos = lista.filter((i) => i.base).map((i) => ({ descricao: i.descricao, quantidade_g: n(i.quantidade_g), base: i.base! }));
+      setRecentes((r) => [...novos, ...r.filter((x) => !novos.some((y) => y.descricao === x.descricao))].slice(0, 8));
+    }
     limpar(); onSaved();
   }
 
-  const editar = (k: number, campo: keyof ItemEd, v: string) => setItens((l) => l!.map((x, i) => (i === k ? { ...x, [campo]: v } : x)));
+  const editar = (k: number, campo: keyof Omit<ItemEd, "base">, v: string) =>
+    setItens((l) => l!.map((x, i) => {
+      if (i !== k) return x;
+      if (campo === "quantidade_g" && x.base) return { ...deBase(x.descricao, n(v), x.base), quantidade_g: v };
+      // Editar kcal ou macros na mão desliga o recálculo automático daquele item
+      return { ...x, [campo]: v, base: campo === "descricao" ? x.base : undefined };
+    }));
 
   return (
     <section className="card">
       <h2>Adicionar</h2>
       <div className="seg" role="group" aria-label="Como registrar">
+        <button aria-pressed={modo === "busca"} onClick={() => { setModo("busca"); limpar(); }}>Buscar<small>TACO</small></button>
         <button aria-pressed={modo === "tabela"} onClick={() => { setModo("tabela"); limpar(); }}>Foto da<small>tabela</small></button>
         <button aria-pressed={modo === "prato"} onClick={() => { setModo("prato"); limpar(); }}>Foto do<small>prato</small></button>
         <button aria-pressed={modo === "manual"} onClick={() => { setModo("manual"); limpar(); setItens([vazio()]); }}>Na<small>mão</small></button>
@@ -228,7 +271,41 @@ function NovoRegistro({ dia, onSaved }: { dia: string; onSaved: () => void }) {
         <select id="ref" value={refeicao} onChange={(e) => setRefeicao(e.target.value)}>{REFEICOES.map((r) => <option key={r}>{r}</option>)}</select>
       </div>
 
-      {modo !== "manual" && !itens && (
+      {modo === "busca" && (
+        <>
+          <div className="field">
+            <label htmlFor="busca">Alimento</label>
+            <input id="busca" type="search" autoComplete="off" value={termo} onChange={(e) => setTermo(e.target.value)} placeholder="Ex.: arroz, frango grelhado, banana" />
+          </div>
+          {termo.trim().length > 1 && (
+            <div className="results">
+              {resultados.map((t) => (
+                <button key={t.id} className="result" onClick={() => adicionar(deBase(t.nome, 100, t))}>
+                  <span><b>{t.nome}</b><small>{t.categoria}</small></span>
+                  <span className="r">{t.kcal} kcal<small>P {t.prot} · C {t.carb} · G {t.gord}</small></span>
+                </button>
+              ))}
+              {!resultados.length && <p className="note" style={{ margin: 0 }}>Nada na TACO com esse nome. Tente outra palavra, use a foto ou registre na mão.</p>}
+            </div>
+          )}
+          {!termo && recentes.length > 0 && (
+            <>
+              <div className="label">Recentes</div>
+              <div className="results">
+                {recentes.map((r) => (
+                  <button key={r.descricao} className="result" onClick={() => adicionar(deBase(r.descricao, r.quantidade_g, r.base))}>
+                    <span><b>{r.descricao}</b><small>{r.quantidade_g} g</small></span>
+                    <span className="r">{porGramas(r.base, r.quantidade_g).kcal} kcal</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="small muted" style={{ margin: 0 }}>Valores por 100 g da TACO (NEPA/Unicamp, 4ª ed.). Ao escolher, ajuste os gramas e o resto se recalcula.</p>
+        </>
+      )}
+
+      {(modo === "tabela" || modo === "prato") && !itens && (
         <>
           <div className="field">
             <label htmlFor="foto">{modo === "tabela" ? "Foto da tabela nutricional" : "Foto do prato (opcional se descrever)"}</label>
@@ -286,7 +363,7 @@ function NovoRegistro({ dia, onSaved }: { dia: string; onSaved: () => void }) {
           <p className="small" style={{ margin: 0 }}>Total: <b>{r0(itens.reduce((a, i) => a + n(i.kcal), 0))} kcal</b> · P {r0(itens.reduce((a, i) => a + n(i.prot_g), 0))} g</p>
           {erro && <p className="msg err">{erro}</p>}
           <button className="btn" onClick={salvar} disabled={busy}>{busy ? "Salvando…" : "Salvar"}</button>
-          {modo !== "manual" && <button className="link" onClick={limpar}>Recomeçar</button>}
+          {modo !== "manual" && <button className="link" onClick={limpar}>{modo === "busca" ? "Limpar lista" : "Recomeçar"}</button>}
         </>
       )}
     </section>
