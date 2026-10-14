@@ -238,15 +238,47 @@ export default function Treino() {
     salvarSessao({ ...session, sets });
   };
 
-  const marcar = (i: number, s: number, kgPh: string) => {
+  // Sugestão para uma série vazia: série anterior de hoje > mesma série da última vez > última carga da última vez
+  const sugestao = (i: number, s: number): { kg: string; reps: string } => {
+    const arr = session?.sets[i] || [];
+    const lp = ultima[its[i].name];
+    let ant: Serie | undefined;
+    for (let k = s - 1; k >= 0; k--) if (arr[k]?.kg) { ant = arr[k]; break; }
+    const ult = lp?.sets[s] || (lp?.sets.length ? lp.sets[lp.sets.length - 1] : undefined);
+    return { kg: ant?.kg || ult?.kg || "", reps: ant?.reps || ult?.reps || defReps(its[i].target) };
+  };
+
+  // Preenche as séries ainda abertas: com a última vez (se houver) ou repetindo a última série feita hoje
+  const repetir = (i: number) => {
+    if (!session) return;
+    const it = its[i], lp = ultima[it.name];
+    const arr = [...(session.sets[i] || [])];
+    let ref: Serie | undefined;
+    for (let k = arr.length - 1; k >= 0; k--) if (arr[k]?.kg) { ref = arr[k]; break; }
+    if (!lp?.sets.length && !ref) { toast("Faça a primeira série para poder repetir"); return; }
+    let n = 0;
+    for (let s = 0; s < it.sets; s++) {
+      const v = arr[s] || {};
+      if (v.ok || v.kg) continue;
+      const fonte = lp?.sets[s] || ref || lp?.sets[lp.sets.length - 1];
+      if (!fonte) continue;
+      arr[s] = { ...v, kg: fonte.kg, reps: v.reps || fonte.reps || defReps(it.target) };
+      n++;
+    }
+    salvarSessao({ ...session, sets: { ...session.sets, [i]: arr } });
+    toast(n ? `${n} série(s) preenchida(s) ${lp?.sets.length ? "com a última vez" : "repetindo a anterior"}. Confira e marque ✓.` : "Nada para preencher");
+  };
+
+  const marcar = (i: number, s: number) => {
     if (!session) return;
     const it = its[i];
+    const sug = sugestao(i, s);
     const sets = { ...session.sets, [i]: [...(session.sets[i] || [])] };
     const v = { ...(sets[i][s] || {}) };
     v.ok = !v.ok;
     if (v.ok) {
-      if (!v.kg && kgPh && kgPh !== "kg") v.kg = kgPh;
-      if (!v.reps) v.reps = defReps(it.target);
+      if (!v.kg && sug.kg) v.kg = sug.kg;
+      if (!v.reps) v.reps = sug.reps;
     }
     sets[i][s] = v;
     salvarSessao({ ...session, sets });
@@ -373,18 +405,17 @@ export default function Treino() {
                 );
               } else {
                 const arr = session.sets[i] || [];
-                const lastKg = lp && lp.sets.length ? lp.sets[lp.sets.length - 1].kg : "";
                 let okCount = 0;
                 const rows = Array.from({ length: it.sets }, (_, s) => {
                   const v = arr[s] || {};
                   if (v.ok) okCount++;
-                  const kgPh = (lp && lp.sets[s] && lp.sets[s].kg) || lastKg || "kg";
+                  const sug = sugestao(i, s);
                   return (
                     <div className={"setrow" + (v.ok ? " ok" : "")} key={s}>
                       <span className="sn">{s + 1}</span>
-                      <input inputMode="decimal" type="text" value={v.kg || ""} placeholder={kgPh} aria-label={`Carga série ${s + 1}`} onChange={(e) => setCampo(i, s, "kg", e.target.value)} />
-                      <input inputMode="numeric" type="text" value={v.reps || ""} placeholder={it.target} aria-label={`Repetições série ${s + 1}`} onChange={(e) => setCampo(i, s, "reps", e.target.value)} />
-                      <button className="ck" aria-label={`Concluir série ${s + 1}`} onClick={() => marcar(i, s, kgPh)}>✓</button>
+                      <input inputMode="decimal" type="text" value={v.kg || ""} placeholder={sug.kg || "kg"} aria-label={`Carga série ${s + 1}`} onChange={(e) => setCampo(i, s, "kg", e.target.value)} />
+                      <input inputMode="numeric" type="text" value={v.reps || ""} placeholder={sug.reps || it.target} aria-label={`Repetições série ${s + 1}`} onChange={(e) => setCampo(i, s, "reps", e.target.value)} />
+                      <button className="ck" aria-label={`Concluir série ${s + 1}`} onClick={() => marcar(i, s)}>✓</button>
                     </div>
                   );
                 });
@@ -416,6 +447,7 @@ export default function Treino() {
                     <div className="tools">
                       {!isWarm && <a className="tool yt" href={ytUrl(it.name)} target="_blank" rel="noopener">Vídeo</a>}
                       {it.restS > 0 && <button className="tool tm" onClick={() => startRest(it.restS, "Descanso · " + it.name)}>⏱ {it.restS}s</button>}
+                      {session && !isWarm && <button className="tool tm" onClick={() => repetir(i)}>↻ Repetir</button>}
                     </div>
                   )}
                   {body}
